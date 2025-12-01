@@ -1,0 +1,22 @@
+/* Styles extracted from Home.tsx — use Tailwind @apply to compose utilities */
+.page { @apply min-h-screen bg-gray-50; }
+.bookingSuccess { @apply fixed top-4 right-4 bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-2 z-40; }
+.hero { @apply relative bg-gradient-to-r from-blue-600 to-teal-600 text-white py-20; }
+.container { @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8; }
+.center { @apply text-center; }
+.heroTitle { @apply text-5xl md:text-6xl font-bold mb-6; }
+.heroLead { @apply text-xl md:text-2xl mb-8 text-blue-100; }
+.ctaBtn { @apply bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-blue-50 transition shadow-lg inline-flex items-center gap-2; }
+.section { @apply py-16; }
+.cardGrid { @apply grid md:grid-cols-3 gap-8 mb-16; }
+.card { @apply bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition; }
+.iconCircle { @apply w-16 h-16 rounded-full flex items-center justify-center mb-6; }
+.iconBlue { @apply bg-blue-100; }
+.iconTeal { @apply bg-teal-100; }
+.iconGreen { @apply bg-green-100; }
+.destinationGrid { @apply grid md:grid-cols-2 lg:grid-cols-3 gap-8; }
+.destCard { @apply bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-1; }
+.destImageWrap { @apply relative h-56 overflow-hidden; }
+.destImage { @apply w-full h-full object-cover; }
+.footerSection { @apply py-16 bg-gradient-to-r from-teal-600 to-blue-600 text-white; }
+.btnBlue { @apply bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-semibold; }
