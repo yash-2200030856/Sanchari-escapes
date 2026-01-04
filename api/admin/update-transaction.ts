@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const requesterId = tokenUserData.user.id;
 
     const { data: requesterProfile } = await supabase.from('profiles').select('role').eq('id', requesterId).single();
-    const isAdmin = requesterProfile?.role === 'admin' || tokenUserData.user?.is_super_admin === true;
+    const isAdmin = requesterProfile?.role === 'admin';
     if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
 
     const { transaction_id, action } = req.body || {};

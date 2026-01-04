@@ -48,7 +48,7 @@ async function verifyAdminFromToken(token) {
       console.error('Error fetching requester profile', rpErr);
       return { ok: false, status: 500, error: 'Failed to verify requester profile' };
     }
-    const isAdmin = requesterProfile?.role === 'admin' || tokenUserData.user?.is_super_admin === true;
+    const isAdmin = requesterProfile?.role === 'admin';
     if (!isAdmin) return { ok: false, status: 403, error: 'Forbidden' };
     return { ok: true, user: tokenUserData.user };
   } catch (err) {
@@ -60,8 +60,15 @@ async function verifyAdminFromToken(token) {
 // List transactions for admin
 app.get('/api/admin/list-transactions', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization || req.headers.Authorization;
-    const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      console.error('No authorization header provided');
+      return res.status(401).json({ error: 'Missing authorization header' });
+    }
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    if (!token) {
+      return res.status(401).json({ error: 'Missing token' });
+    }
     const v = await verifyAdminFromToken(token);
     if (!v.ok) return res.status(v.status).json({ error: v.error });
 

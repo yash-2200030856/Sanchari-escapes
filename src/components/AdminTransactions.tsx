@@ -17,39 +17,21 @@ export default function AdminTransactions() {
   const loadTransactions = async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = (session as any)?.access_token;
+      // Query Supabase directly - RLS policies handle admin permission
+      const { data: transactions, error } = await supabase
+        .from('transactions')
+        .select('*, bookings(*), profiles:user_id(*)')
+        .order('created_at', { ascending: false });
 
-      const resp = await fetch('/api/admin/list-transactions', {
-        method: 'GET',
-        headers: {
-          Authorization: token ? `Bearer ${token}` : ''
-        }
-      });
-
-      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-
-      if (!resp.ok) {
-        if (contentType.includes('application/json')) {
-          const err = await resp.json().catch(() => ({}));
-          setMessage(err.error || 'Failed to load transactions');
-        } else {
-          const text = await resp.text().catch(() => '');
-          setMessage(text || `Failed to load transactions (status ${resp.status})`);
-        }
+      if (error) {
+        setMessage(error.message || 'Failed to load transactions');
         setLoading(false);
         return;
       }
 
-      if (contentType.includes('application/json')) {
-        const json = await resp.json().catch(() => ({}));
-        // Filter out refund transactions (payment_method = 'refund') - show only actual payments
-        const filteredTransactions = (json.data || []).filter((t: any) => t.payment_method !== 'refund');
-        setTransactions(filteredTransactions);
-      } else {
-        const text = await resp.text().catch(() => '');
-        setMessage(`Unexpected non-JSON response from /api/admin/list-transactions: ${text.slice(0,200)}`);
-      }
+      // Filter out refund transactions (payment_method = 'refund') - show only actual payments
+      const filteredTransactions = (transactions || []).filter((t: any) => t.payment_method !== 'refund');
+      setTransactions(filteredTransactions);
     } catch (e: any) {
       setMessage(e.message || 'Failed to load transactions');
     } finally {
