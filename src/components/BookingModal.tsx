@@ -5,7 +5,7 @@ import { X, Users } from 'lucide-react';
 type BookingModalProps = {
   destination: Destination;
   onClose: () => void;
-  onBook: (startDate: string, endDate: string, travelers: number, paymentMethod: string) => Promise<void>;
+  onBook: (startDate: string, endDate: string, travelers: number) => Promise<void>;
 };
 
 export default function BookingModal({ destination, onClose, onBook }: BookingModalProps) {
@@ -13,7 +13,6 @@ export default function BookingModal({ destination, onClose, onBook }: BookingMo
   const [endDate, setEndDate] = useState('');
   const [travelers, setTravelers] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'Cash'|'Credit Card'>('Cash');
   const [error, setError] = useState('');
 
   const totalAmount = destination.price_per_person * travelers;
@@ -38,9 +37,14 @@ export default function BookingModal({ destination, onClose, onBook }: BookingMo
       return;
     }
 
+    if (travelers > 6) {
+      setError('Maximum 6 travelers per booking');
+      return;
+    }
+
     setLoading(true);
     try {
-      await onBook(startDate, endDate, travelers, paymentMethod);
+      await onBook(startDate, endDate, travelers);
     } finally {
       setLoading(false);
     }
@@ -98,21 +102,16 @@ export default function BookingModal({ destination, onClose, onBook }: BookingMo
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-            <div className="flex items-center gap-4">
-              <label className="inline-flex items-center gap-2">
-                <input type="radio" name="paymentMethod" value="Cash" checked={paymentMethod === 'Cash'} onChange={() => setPaymentMethod('Cash')} />
-                <span className="text-sm">Pay by Cash</span>
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input type="radio" name="paymentMethod" value="Credit Card" checked={paymentMethod === 'Credit Card'} onChange={() => setPaymentMethod('Credit Card')} />
-                <span className="text-sm">Credit Card</span>
-              </label>
+            <div className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-gray-50">
+              <input type="radio" name="paymentMethod" value="Cash" checked readOnly />
+              <span className="text-sm">Cash (pay in person)</span>
             </div>
+            <p className="text-xs text-gray-500 mt-2">Payment is cash only at this time.</p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Number of Travelers
+              Number of Travelers (Max: 6)
             </label>
             <div className="flex items-center gap-4">
               <button
@@ -129,13 +128,13 @@ export default function BookingModal({ destination, onClose, onBook }: BookingMo
                   required
                   min="1"
                   value={travelers}
-                  onChange={(e) => setTravelers(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => setTravelers(Math.max(1, Math.min(6, parseInt(e.target.value) || 1)))}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
               </div>
               <button
                 type="button"
-                onClick={() => setTravelers(travelers + 1)}
+                onClick={() => setTravelers(Math.min(6, travelers + 1))}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold"
               >
                 +

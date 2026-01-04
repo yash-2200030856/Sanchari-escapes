@@ -67,6 +67,7 @@ export type Transaction = {
   transaction_date: string;
   payment_method: string;
   status: 'completed' | 'pending' | 'failed';
+  refund_status?: 'none' | 'pending' | 'processed' | 'failed';
   created_at: string;
   bookings?: Booking;
 };

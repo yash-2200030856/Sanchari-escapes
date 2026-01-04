@@ -42,13 +42,14 @@ export default function Home({ onNavigate }: { onNavigate: (page: string) => voi
     setBookingError('');
   };
 
-  const handleBooking = async (startDate: string, endDate: string, travelers: number, paymentMethod: string) => {
+  const handleBooking = async (startDate: string, endDate: string, travelers: number) => {
     if (!user || !selectedDestination || isBooking) return;
 
     setIsBooking(true);
     setBookingError('');
 
     try {
+      const paymentMethod = 'Cash';
       const totalAmount = selectedDestination.price_per_person * travelers;
 
       const { data: booking, error: bookingError } = await supabase
@@ -75,7 +76,7 @@ export default function Home({ onNavigate }: { onNavigate: (page: string) => voi
         booking_id: booking.id,
         amount: totalAmount,
         payment_method: paymentMethod,
-        status: paymentMethod === 'Cash' ? 'pending' : 'completed',
+        status: 'pending',
       });
 
       if (transactionError) {
@@ -85,11 +86,7 @@ export default function Home({ onNavigate }: { onNavigate: (page: string) => voi
 
       setShowBookingModal(false);
       setSelectedDestination(null);
-      if (paymentMethod === 'Cash') {
-        setBookingSuccess(`Your trip to ${selectedDestination.name} has been booked — payment marked as pending (pay by cash). You will be redirected shortly.`);
-      } else {
-        setBookingSuccess(`Your trip to ${selectedDestination.name} has been booked and payment completed. You will be redirected shortly.`);
-      }
+      setBookingSuccess(`Your trip to ${selectedDestination.name} has been booked — payment marked as pending (pay by cash). You will be redirected shortly.`);
 
       setTimeout(() => {
         setBookingSuccess('');
