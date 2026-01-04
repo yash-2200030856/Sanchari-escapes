@@ -44,7 +44,6 @@ export default function UpcomingTrips() {
       .select('*, destinations(*), transactions(*)')
       .eq('user_id', user!.id)
       .gte('end_date', new Date().toISOString().split('T')[0])
-      // only active/upcoming bookings — exclude cancelled ones
       .eq('status', 'upcoming')
       .order('start_date', { ascending: true });
 
@@ -75,10 +74,38 @@ export default function UpcomingTrips() {
 
     if (error) {
       setCancelMessage('Failed to cancel trip');
-    } else {
-      setCancelMessage('Trip cancelled successfully');
-      loadUpcomingTrips();
+      setCancelingId(null);
+      setTimeout(() => setCancelMessage(''), 3000);
+      return;
     }
+
+    try {
+      const { data: txs } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('booking_id', bookingId);
+
+      if (txs && txs.length > 0) {
+        await supabase
+          .from('transactions')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('booking_id', bookingId);
+
+        const refundable = txs.filter((t: any) => {
+          const m = (t.payment_method || '').toLowerCase();
+          return t.status === 'completed' && (m === 'card' || m === 'credit_card' || m === 'cash' || m === 'card_payment');
+        });
+
+        if (refundable.length > 0) {
+          await supabase.from('bookings').update({ refund_requested: true }).eq('id', bookingId);
+        }
+      }
+    } catch (e) {
+      console.error('error updating transaction status', e);
+    }
+
+    setCancelMessage('Trip cancelled successfully');
+    loadUpcomingTrips();
     setCancelingId(null);
 
     setTimeout(() => setCancelMessage(''), 3000);

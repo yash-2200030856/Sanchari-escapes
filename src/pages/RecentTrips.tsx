@@ -190,6 +190,9 @@ export default function RecentTrips() {
                         {trip.status === 'cancelled' ? (
                           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                             <p className="text-sm text-red-600 font-medium">This trip was cancelled</p>
+                            {((trip.transactions && trip.transactions.some((t: any) => t.refund_status === 'pending')) || (trip as any).refund_requested) && (
+                              <p className="text-sm text-red-600">Refund will be processed</p>
+                            )}
                           </div>
                         ) : existingReview ? (
                           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">

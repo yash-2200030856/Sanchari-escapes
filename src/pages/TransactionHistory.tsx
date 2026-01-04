@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase, Transaction } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { Transaction } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { CreditCard, Calendar, CheckCircle, XCircle, Clock } from 'lucide-react';
 
@@ -15,16 +16,73 @@ export default function TransactionHistory() {
   }, [user]);
 
   const loadTransactions = async () => {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*, bookings(*, destinations(*))')
-      .eq('user_id', user!.id)
-      .order('transaction_date', { ascending: false });
+    try {
+      // First try to fetch just transactions
+      const { data: txData, error: txError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user!.id)
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setTransactions(data);
+      if (txError) {
+        console.error('Error loading transactions:', txError);
+        setTransactions([]);
+      } else if (txData && txData.length > 0) {
+        console.log('Loaded transactions:', txData);
+        
+        // Now fetch bookings and trips separately for each transaction
+        const enrichedData = await Promise.all(
+          txData.map(async (tx: any) => {
+            let bookingWithDestination = null;
+            if (tx.booking_id) {
+              try {
+                // First get the booking
+                const { data: bookingData, error: bookingError } = await supabase
+                  .from('bookings')
+                  .select('*')
+                  .eq('id', tx.booking_id)
+                  .single();
+
+                if (!bookingError && bookingData && bookingData.trip_id) {
+                  // booking.trip_id actually points to destinations.id
+                  const { data: destinationData, error: destError } = await supabase
+                    .from('destinations')
+                    .select('*')
+                    .eq('id', bookingData.trip_id)
+                    .single();
+
+                  if (!destError && destinationData) {
+                    bookingWithDestination = {
+                      ...bookingData,
+                      destinations: destinationData
+                    };
+                  } else {
+                    bookingWithDestination = bookingData; // fallback without destination
+                  }
+                }
+              } catch (e) {
+                console.error('Error fetching booking/destination for tx', tx.id, e);
+              }
+            }
+            return {
+              ...tx,
+              bookings: bookingWithDestination
+            };
+          })
+        );
+
+        console.log('Enriched transactions with destinations:', enrichedData);
+        setTransactions(enrichedData);
+      } else {
+        console.log('No transactions found for user');
+        setTransactions([]);
+      }
+    } catch (err) {
+      console.error('Exception loading transactions:', err);
+      setTransactions([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const getStatusIcon = (status: string) => {
@@ -35,6 +93,10 @@ export default function TransactionHistory() {
         return <Clock className="w-5 h-5 text-yellow-500" />;
       case 'failed':
         return <XCircle className="w-5 h-5 text-red-500" />;
+      case 'cancelled':
+        return <XCircle className="w-5 h-5 text-gray-500" />;
+      case 'refunded':
+        return <CheckCircle className="w-5 h-5 text-blue-500" />;
       default:
         return null;
     }
@@ -48,6 +110,10 @@ export default function TransactionHistory() {
         return 'bg-yellow-100 text-yellow-800';
       case 'failed':
         return 'bg-red-100 text-red-800';
+      case 'cancelled':
+        return 'bg-gray-100 text-gray-800';
+      case 'refunded':
+        return 'bg-blue-100 text-blue-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -124,7 +190,7 @@ export default function TransactionHistory() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Calendar className="w-4 h-4" />
-                          {new Date(transaction.transaction_date).toLocaleDateString()}
+                          {new Date(transaction.created_at).toLocaleDateString()}
                         </div>
                       </td>
                       <td className="px-6 py-4">

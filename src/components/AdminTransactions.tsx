@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase, Transaction } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { Transaction } from '../types';
 import { Check, Clock } from 'lucide-react';
 import TopMessage from './TopMessage';
 
@@ -7,6 +8,7 @@ export default function AdminTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadTransactions();
@@ -14,26 +16,168 @@ export default function AdminTransactions() {
 
   const loadTransactions = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*, bookings(*), profiles:user_id(*)')
-      .order('created_at', { ascending: false });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = (session as any)?.access_token;
 
-    if (!error && data) setTransactions(data as any);
-    setLoading(false);
+      const resp = await fetch('/api/admin/list-transactions', {
+        method: 'GET',
+        headers: {
+          Authorization: token ? `Bearer ${token}` : ''
+        }
+      });
+
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+
+      if (!resp.ok) {
+        if (contentType.includes('application/json')) {
+          const err = await resp.json().catch(() => ({}));
+          setMessage(err.error || 'Failed to load transactions');
+        } else {
+          const text = await resp.text().catch(() => '');
+          setMessage(text || `Failed to load transactions (status ${resp.status})`);
+        }
+        setLoading(false);
+        return;
+      }
+
+      if (contentType.includes('application/json')) {
+        const json = await resp.json().catch(() => ({}));
+        // Filter out refund transactions (payment_method = 'refund') - show only actual payments
+        const filteredTransactions = (json.data || []).filter((t: any) => t.payment_method !== 'refund');
+        setTransactions(filteredTransactions);
+      } else {
+        const text = await resp.text().catch(() => '');
+        setMessage(`Unexpected non-JSON response from /api/admin/list-transactions: ${text.slice(0,200)}`);
+      }
+    } catch (e: any) {
+      setMessage(e.message || 'Failed to load transactions');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const approve = async (id: string) => {
     setMessage('');
-    const { error } = await supabase
-      .from('transactions')
-      .update({ status: 'completed' })
-      .eq('id', id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = (session as any)?.access_token;
 
-    if (error) setMessage('Failed to update transaction');
-    else {
+      const resp = await fetch('/api/admin/update-transaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ transaction_id: id, action: 'approve' })
+      });
+
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+
+      if (!resp.ok) {
+        if (contentType.includes('application/json')) {
+          const err = await resp.json().catch(() => ({}));
+          setMessage(err.error || 'Failed to approve transaction');
+        } else {
+          const text = await resp.text().catch(() => '');
+          setMessage(text || `Failed to approve transaction (status ${resp.status})`);
+        }
+        return;
+      }
+
       setMessage('Transaction approved');
       loadTransactions();
+    } catch (e: any) {
+      setMessage(e.message || 'Failed to approve transaction');
+    }
+  };
+
+  const rejectTransaction = async (id: string) => {
+    setMessage('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = (session as any)?.access_token;
+
+      const resp = await fetch('/api/admin/update-transaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ transaction_id: id, action: 'reject' })
+      });
+
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+
+      if (!resp.ok) {
+        if (contentType.includes('application/json')) {
+          const err = await resp.json().catch(() => ({}));
+          setMessage(err.error || 'Failed to reject transaction');
+        } else {
+          const text = await resp.text().catch(() => '');
+          setMessage(text || `Failed to reject transaction (status ${resp.status})`);
+        }
+        return;
+      }
+
+      setMessage('Transaction rejected');
+      loadTransactions();
+    } catch (e: any) {
+      setMessage(e.message || 'Failed to reject transaction');
+    }
+  };
+
+  const processRefund = async (id: string, amount: number, booking_id?: string, user_id?: string) => {
+    // Prevent duplicate refunds
+    if (processingId === id) return;
+    
+    setMessage('');
+    setProcessingId(id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = (session as any)?.access_token;
+
+      const resp = await fetch('/api/admin/process-refund', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ transaction_id: id, booking_id, user_id, amount })
+      });
+
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+
+      if (!resp.ok) {
+        if (contentType.includes('application/json')) {
+          const err = await resp.json().catch(() => ({}));
+          setMessage(err.error || 'Failed to process refund');
+        } else {
+          const text = await resp.text().catch(() => '');
+          setMessage(text || `Failed to process refund (status ${resp.status})`);
+        }
+        setProcessingId(null);
+        return;
+      }
+
+      if (contentType.includes('application/json')) {
+        const json = await resp.json().catch(() => ({}));
+        if (json.success) {
+          setMessage('Refund processed');
+          setProcessingId(null);
+          loadTransactions();
+        } else {
+          setMessage(json.error || 'Failed to process refund');
+          setProcessingId(null);
+        }
+      } else {
+        const text = await resp.text().catch(() => '');
+        setMessage(`Unexpected non-JSON response from refund endpoint: ${text.slice(0,200)}`);
+        setProcessingId(null);
+      }
+    } catch (e) {
+      setMessage('Failed to process refund');
+      setProcessingId(null);
     }
   };
 
@@ -68,14 +212,36 @@ export default function AdminTransactions() {
                   <td className="px-6 py-4 text-sm text-gray-800">
                     {t.status === 'completed' ? (
                       <div className="inline-flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium"><Check className="w-4 h-4"/> Completed</div>
+                    ) : t.status === 'refunded' ? (
+                      <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium"><Check className="w-4 h-4"/> Refunded</div>
+                    ) : t.status === 'cancelled' ? (
+                      <div className="inline-flex items-center gap-1 bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-medium">Cancelled</div>
                     ) : (
                       <div className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium"><Clock className="w-4 h-4"/> {t.status}</div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm">
-                    {t.status !== 'completed' && (
-                      <button onClick={() => approve(t.id)} className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Approve</button>
-                    )}
+                    <div className="flex gap-2">
+                      {t.status === 'pending' && (
+                        <>
+                          <button onClick={() => approve(t.id)} className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Approve</button>
+                          <button onClick={() => rejectTransaction(t.id)} className="px-3 py-1 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Reject</button>
+                        </>
+                      )}
+                      {t.status === 'completed' && t.refund_status !== 'processed' && (((t as any).bookings?.refund_requested === true) || t.refund_status === 'pending') && (
+                        <button 
+                          onClick={() => processRefund(t.id, t.amount, (t as any).booking_id, t.user_id)} 
+                          disabled={processingId === t.id}
+                          className={`px-3 py-1 rounded-lg text-white ${
+                            processingId === t.id 
+                              ? 'bg-gray-400 cursor-not-allowed' 
+                              : 'bg-red-600 hover:bg-red-700'
+                          }`}
+                        >
+                          {processingId === t.id ? 'Processing...' : 'Refund'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

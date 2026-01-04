@@ -18,14 +18,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, phone, role, created_at, updated_at')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (!error && data) {
-      setProfile(data);
+      if (!error && data) {
+        console.log('Profile fetched:', data);
+        setProfile(data);
+      } else {
+        console.error('Profile fetch error:', error);
+      }
+    } catch (err) {
+      console.error('Profile fetch exception:', err);
     }
   };
 
