@@ -31,6 +31,7 @@ export default function AdminTransactions() {
 
       // Filter out refund transactions (payment_method = 'refund') - show only actual payments
       const filteredTransactions = (transactions || []).filter((t: any) => t.payment_method !== 'refund');
+      console.log('Loaded transactions:', filteredTransactions);
       setTransactions(filteredTransactions);
     } catch (e: any) {
       setMessage(e.message || 'Failed to load transactions');
@@ -113,11 +114,23 @@ export default function AdminTransactions() {
     // Prevent duplicate refunds
     if (processingId === id) return;
     
+    console.log('processRefund called:', { id, amount, booking_id, user_id });
     setMessage('');
     setProcessingId(id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = (session as any)?.access_token;
+
+      if (!token) {
+        const msg = 'Authentication token not found. Please log in again.';
+        console.error(msg);
+        setMessage(msg);
+        setProcessingId(null);
+        return;
+      }
+
+      const requestBody = { transaction_id: id, booking_id, user_id, amount };
+      console.log('Sending refund request:', requestBody);
 
       const resp = await fetch('/api/admin/process-refund', {
         method: 'POST',
@@ -125,17 +138,21 @@ export default function AdminTransactions() {
           'Content-Type': 'application/json',
           Authorization: token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify({ transaction_id: id, booking_id, user_id, amount })
+        body: JSON.stringify(requestBody)
       });
+
+      console.log('Refund response status:', resp.status);
 
       const contentType = (resp.headers.get('content-type') || '').toLowerCase();
 
       if (!resp.ok) {
         if (contentType.includes('application/json')) {
           const err = await resp.json().catch(() => ({}));
-          setMessage(err.error || 'Failed to process refund');
+          console.error('Refund error (JSON):', err);
+          setMessage(err.error || `Failed to process refund (status ${resp.status})`);
         } else {
           const text = await resp.text().catch(() => '');
+          console.error('Refund error (text):', text);
           setMessage(text || `Failed to process refund (status ${resp.status})`);
         }
         setProcessingId(null);
@@ -144,21 +161,24 @@ export default function AdminTransactions() {
 
       if (contentType.includes('application/json')) {
         const json = await resp.json().catch(() => ({}));
+        console.log('Refund response:', json);
         if (json.success) {
-          setMessage('Refund processed');
+          setMessage('Refund processed successfully');
           setProcessingId(null);
-          loadTransactions();
+          setTimeout(() => loadTransactions(), 1000);
         } else {
           setMessage(json.error || 'Failed to process refund');
           setProcessingId(null);
         }
       } else {
         const text = await resp.text().catch(() => '');
-        setMessage(`Unexpected non-JSON response from refund endpoint: ${text.slice(0,200)}`);
+        console.error('Non-JSON response:', text);
+        setMessage(`Unexpected response: ${text.slice(0, 200)}`);
         setProcessingId(null);
       }
-    } catch (e) {
-      setMessage('Failed to process refund');
+    } catch (e: any) {
+      console.error('Refund exception:', e);
+      setMessage(e.message || 'Failed to process refund');
       setProcessingId(null);
     }
   };
@@ -167,7 +187,7 @@ export default function AdminTransactions() {
 
   return (
     <div>
-      <TopMessage message={message} type="success" onClose={() => setMessage('')} />
+      <TopMessage message={message} type={message.includes('successfully') || message.includes('Refund processed') ? 'success' : 'error'} onClose={() => setMessage('')} />
 
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
@@ -210,9 +230,12 @@ export default function AdminTransactions() {
                           <button onClick={() => rejectTransaction(t.id)} className="px-3 py-1 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Reject</button>
                         </>
                       )}
-                      {t.status === 'completed' && t.refund_status !== 'processed' && (((t as any).bookings?.refund_requested === true) || t.refund_status === 'pending') && (
+                      {t.status === 'completed' && t.refund_status !== 'processed' && (
                         <button 
-                          onClick={() => processRefund(t.id, t.amount, (t as any).booking_id, t.user_id)} 
+                          onClick={() => {
+                            console.log('Refund clicked for:', { id: t.id, amount: t.amount, booking_id: t.booking_id, user_id: t.user_id });
+                            processRefund(t.id, t.amount, t.booking_id, t.user_id);
+                          }}
                           disabled={processingId === t.id}
                           className={`px-3 py-1 rounded-lg text-white ${
                             processingId === t.id 
